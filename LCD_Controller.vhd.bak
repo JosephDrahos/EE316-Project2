@@ -1,0 +1,126 @@
+--------------------------------------------------------------------------------
+-- Filename     : LCD_Controller.vhd
+-- Author       : Joseph Drahos
+-- Date Created : 2021-9-2
+-- Project      : EE316 Project 2
+-- Description  : LCD Controller Code
+--------------------------------------------------------------------------------
+
+-----------------
+--  Libraries  --
+-----------------
+library ieee;
+  use ieee.std_logic_1164.all;
+  use ieee.numeric_std.all;
+
+--------------
+--  Entity  --
+--------------
+entity LCD_Controller is
+port
+(
+  I_CLK_50MHZ     : in std_logic;     -- Input clock signal
+  Reset           : in std_logic;     --Reset signals
+  data_in         : in std_logic_vector (15 downto 0);
+  mode            : in std_logic_vector (2 downto 0);
+
+  RS              : out std_logic;
+  E               : out std_logic;
+  RW              : out std_logic;
+  data_inout      : inout std_logic_vector (7 downto 0)
+);
+end LCD_Controller;
+
+architecture LUT of LCD_Controller is
+  type LCD_STATE is (i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19,--initialization
+                     ready,                          --waiting stage
+                     t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, --test stages
+                     p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15,  --pause stages
+                     pwm1, pwm2, pwm3, pwm4, pwm5, pwm6, pwm7, pwm8, pwm9, pwm10, pwm11,  --pwm stages
+                     pwm12, pwm13, pwm14, pwm15,
+                     60hz1, 60hz2, 60hz3, 60hz4, 60hz5,
+                     120hz1, 120hz2, 120hz3, 120hz4, 120hz5, 120hz6,
+                     1000hz1, 1000hz2, 1000hz3, 1000hz4, 1000hz5, 1000hz6, 1000hz7);
+
+   signal state : LCD_STATE;
+   signal counter : unsigned (18 downto 0) := (others => '0');
+begin
+  LCD_Controller_FSM : process (I_CLK_50MHZ, Reset, mode)
+    begin
+      if(rising_edge(I_CLK_50MHZ)) then
+        case state is
+          when i1 =>
+            RS <= 0;
+            RW <= 0;
+            data_inout <= "00110000";
+            --4.1 ms delay
+            if counter = "110010000011001000" then
+              state <= i2;
+              counter <= (others => '0');
+            else
+              state <= i1;
+            end if;
+          when i2 =>
+            data_inout <= "00110000";
+            --100us delay
+            if counter =  "01001110001000"; then
+              state <= i3;
+            else
+              state <= i2;
+          when i3 =>
+            data_inout <= "00110000";
+            state <= i4;
+          when i4 =>
+            data_inout <= "00110000";
+            state <= i5;
+          when i5 =>
+            data_inout <= "00001100";
+            state <= i6;
+          when i6 =>
+            data_inout <= "00000110";
+            state <= i7;
+          when i7 =>
+            data_inout <= "10000000";
+            state <= i8;
+          when i8 =>
+            RS <= '1';
+            data_inout <= "01001001"; --I
+            state <= i9;
+          when i9 =>
+            data_inout <= "011011110";--n
+            state <= i10;
+          when i10 =>
+            data_inout <= "01101001";--i
+            state <= i11;
+          when i11 =>
+            data_inout <= "01110100"--t
+            state <= i12;
+          when i12 =>
+            data_inout <= "01101001"--i
+            state <= i13;
+          when i13 =>
+            data_inout <= "01100001"--a
+            state <= i14;
+          when i14 =>
+            data_inout <= "01101100"--l
+            state <= i15;
+          when i15 =>
+            data_inout <= "01101001"--i
+            state <= i16;
+          when i16 =>
+            data_inout <= "01111010"--z
+            state <= i17;
+          when i17 =>
+            data_inout <= "01101001"--i
+            state <= i18;
+          when i18 =>
+            data_inout <= "01101110"--n
+            state <= i19;
+          when i19 =>
+            data_inout <= "01100111"--g
+            state <= ready;
+        end case;
+        counter <= counter + 1;
+      end if;
+  end process LCD_Controller_FSM;
+end architecture LUT;
