@@ -42,8 +42,8 @@ begin
     		lcd_en       => lcd_en;
     		BUSY         => BUSY;
     		RS           => RS;
-            E            => E;
-            RW           => RW;
+                E            => E;
+                RW           => RW;
     		data_out     => data_out; 
 			
 			
