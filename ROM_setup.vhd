@@ -59,7 +59,7 @@ ARCHITECTURE SYN OF rom_setup IS
 	GENERIC (
 		clock_enable_input_a		: STRING;
 		clock_enable_output_a		: STRING;
-		init_file		: STRING;
+		init_file			: STRING;
 		intended_device_family		: STRING;
 		lpm_hint		: STRING;
 		lpm_type		: STRING;
