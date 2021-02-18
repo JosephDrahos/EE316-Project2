@@ -9,7 +9,7 @@
 -- SNR:             : SNR: 
 
 DEPTH = 256;
-WIDTH = 16;
+WIDTH = 16; 
 
 ADDRESS_RADIX = DEC;
 DATA_RADIX = DEC;
