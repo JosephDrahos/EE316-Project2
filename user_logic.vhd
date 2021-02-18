@@ -1,7 +1,5 @@
 library ieee;
 use ieee.std_logic_1164.all;
-use ieee.std_logic_arith.all;
-
 ENTITY user_logic is 
 	PORT(
 			i1			: in std_logic_vector (7 downto 0) := "01110110";
@@ -16,45 +14,42 @@ ENTITY user_logic is
 			i10		: inout std_logic_vector (7 downto 0);
 			sixteen	: in std_logic_vector (15 downto 0) := "1010101111001101";
 		--	sel	 	: in std_logic_vector (3 downto 0) := "
-			output	: out std_logic_vector (7 downto 0)
+			output	: out std_logic_vector (7 downto 0);
+			busy		: in std_logic;
+			Q			: inout std_logic
 		);	
-	end user_logic;
+end user_logic;
 
 architecture Behavior of user_logic is
 
 TYPE sel_states IS (s1, s2, s3, s4, s5, s6, s7, s8, s9, s10);
 signal state		: sel_states := s1;
-
+signal Q_sig		: std_logic;
+component busy_reg
+	port(
+		busy	: in std_logic;
+		Q		: out std_logic
+	);
+	end component;
 
 begin
-	
+	Q  <= Q_sig;
 	i7 <= "0000" & sixteen(15 downto 12);
 	i8 <= "0000" & sixteen(11 downto 8);
 	i9 <= "0000" & sixteen(7 downto 4);
 	i10 <= "0000" & sixteen(3 downto 0);
-
-end behavior;	
 	
---busy register logic (SHOULD PROBABLY GO IN TOP FILE)
-entity busy_reg is 
-	port
-	(
-		busy	: in std_logic;
-		Q		: out std_logic;
-	);
-end busy_reg;
-
-architecture behavioral of busy_reg is
-begin
-	process
+	PROCESS
 	begin
 		if busy = '1' then	
 			q <= '1';
 		else
 			q <= '0';
+		end if;
 	end process;
 	process 
 	begin
+	case state IS
 		when s1 =>
 			output <= i1;
 			if(q='1')then
@@ -116,6 +111,7 @@ begin
 			else
 			end if;
 		end case;	
-end behavioral;
+end process;
+end behavior;
 	
 	
