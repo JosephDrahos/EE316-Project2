@@ -68,7 +68,7 @@ ARCHITECTURE SYN OF rom IS				-- behaviourial Declaration of ROM
 		outdata_aclr_a		: STRING;
 		outdata_reg_a		: STRING;
 		widthad_a		: NATURAL;
-		width_a		: NATURAL;
+		width_a			: NATURAL;
 		width_byteena_a		: NATURAL
 	);
 	PORT (
