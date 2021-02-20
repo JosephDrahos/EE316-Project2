@@ -1,117 +1,133 @@
 library ieee;
 use ieee.std_logic_1164.all;
-ENTITY user_logic is 
+use ieee.std_logic_unsigned.all;
+
+entity i2c_user_logic is
+	Generic (slave_addr : std_logic_vector(6 downto 0) := "1110010");
 	PORT(
-			i1			: in std_logic_vector (7 downto 0) := "01110110";
-			i2			: in std_logic_vector (7 downto 0) := "01110110";
-			i3			: in std_logic_vector (7 downto 0) := "01110110";
-			i4			: in std_logic_vector (7 downto 0) := "01110111";
-			i5			: in std_logic_vector (7 downto 0) := "00000111";
-			i6			: in std_logic_vector (7 downto 0) := "01111010";
-			i7			: inout std_logic_vector (7 downto 0);
-			i8			: inout std_logic_vector (7 downto 0); 
-			i9			: inout std_logic_vector (7 downto 0);
-			i10		: inout std_logic_vector (7 downto 0);
-			sixteen	: in std_logic_vector (15 downto 0) := "1010101111001101";
-		--	sel	 	: in std_logic_vector (3 downto 0) := "
-			output	: out std_logic_vector (7 downto 0);
-			busy		: in std_logic;
-			Q			: inout std_logic
-		);	
-end user_logic;
-
-architecture Behavior of user_logic is
-
-TYPE sel_states IS (s1, s2, s3, s4, s5, s6, s7, s8, s9, s10);
-signal state		: sel_states := s1;
-signal Q_sig		: std_logic;
-component busy_reg
-	port(
-		busy	: in std_logic;
-		Q		: out std_logic
+			clock			: in std_logic;
+			dataIn			: in std_logic_vector(15 downto 0) := X"ABCD";
+--			byteSel		: inout integer := 0;
+--			data_wr		: out std_logic_vector(7 downto 0);
+			outSCL			: inout std_logic;
+			outSDA			: inout std_logic
+--			en				: in std_logic;
+--			busy 			: in std_logic
 	);
-	end component;
+end i2c_user_logic;
 
-begin
-	Q  <= Q_sig;
-	i7 <= "0000" & sixteen(15 downto 12);
-	i8 <= "0000" & sixteen(11 downto 8);
-	i9 <= "0000" & sixteen(7 downto 4);
-	i10 <= "0000" & sixteen(3 downto 0);
-	
-	PROCESS
-	begin
-		if busy = '1' then	
-			q <= '1';
-		else
-			q <= '0';
-		end if;
-	end process;
-	process 
-	begin
-	case state IS
-		when s1 =>
-			output <= i1;
-			if(q='1')then
-				state <= s2;
-			else
-			end if;
-		when s2 =>
-			output <= i2;
-			if(q='1')then
-				state <= s3;
-			else
-			end if;
-		when s3 =>
-			output <= i3;
-			if(q='1')then
-				state <= s4;
-			else
-			end if;
-		when s4 =>
-			output <= i4;
-			if(q='1')then
-				state <= s5;
-			else
-			end if;
-		when s5 =>
-			output <= i5;
-			if(q='1')then
-				state <= s6;
-			else
-			end if;
-		when s6 =>
-			output <= i6;
-			if(q='1')then
-				state <= s7;
-			else
-			end if;
-		when s7 =>
-			output <= i7;
-			if(q='1')then
-				state <= s8;
-			else
-			end if;
-		when s8 =>
-			output <= i8;
-			if(q='1')then
-				state <= s9;
-			else
-			end if;
-		when s9 =>
-			output <= i9;
-			if(q='1')then
-				state <= s10;
-			else
-			end if;
-		when s10 =>
-			output <= i10;
-			if(q='1')then
-				state <= s7;
-			else
-			end if;
-		end case;	
+architecture behavioral of i2c_user_logic is
+
+component i2c_master is
+  GENERIC(
+    input_clk : INTEGER := 100_000_000; --input clock speed from user logic in Hz
+    bus_clk   : INTEGER := 400_000);   --speed the i2c bus (scl) will run at in Hz
+  PORT(
+    clk       : IN     STD_LOGIC;                    --system clock
+    reset_n   : IN     STD_LOGIC;                    --active low reset
+    ena       : IN     STD_LOGIC;                    --latch in command
+    addr      : IN     STD_LOGIC_VECTOR(6 DOWNTO 0); --address of target slave
+    rw        : IN     STD_LOGIC;                    --'0' is write, '1' is read
+    data_wr   : IN     STD_LOGIC_VECTOR(7 DOWNTO 0); --data to write to slave
+    busy      : OUT    STD_LOGIC;                    --indicates transaction in progress
+    data_rd   : OUT    STD_LOGIC_VECTOR(7 DOWNTO 0); --data read from slave
+    ack_error : BUFFER STD_LOGIC;                    --flag if improper acknowledge from slave
+    sda       : INOUT  STD_LOGIC;                    --serial data output of i2c bus
+    scl       : INOUT  STD_LOGIC);                   --serial clock output of i2c bus
+END component i2c_master;
+
+signal busyReg, busySig, reset, enable, r_w, ackSig : std_logic;
+signal regData	: std_logic_vector(15 downto 0);
+signal dataOut	: std_logic_vector(7 downto 0);
+signal byteSel	: integer := 0;
+signal MaxByte : integer := 12;
+type state_type is (start,write_data,repeat);
+signal state : state_type := start;
+signal address : std_logic_vector(6 downto 0);
+signal Cont 	: integer := 16383;
+
+
+begin	
+
+output: i2c_master
+port map(
+	clk=>clock,
+	reset_n=>reset,
+	ena=>enable,
+	addr=>address,
+	rw=>r_w,
+	data_wr=>dataOut,
+	busy=>busySig,
+	data_rd=>OPEN,
+	ack_error=>ackSig,
+	sda=>outSDA,
+	scl=>outSCL
+);
+
+ChangeState: process(byteSel,clock)
+	begin	
+		case byteSel is
+			when 0  => dataOut <= X"76";
+			when 1  => dataOut <= X"76";
+			when 2  => dataOut <= X"76";
+			when 3  => dataOut <= X"7A";
+			when 4  => dataOut <= X"FF";
+			when 5  => dataOut <= X"77";
+			when 6  => dataOut <= X"00";
+			when 7  => dataOut <= X"79";
+			when 8  => dataOut <= X"00";
+			when 9  => dataOut <= X"0"&dataIn(15 downto 12);
+			when 10  => dataOut <= X"0"&dataIn(11 downto 8);
+			when 11 => dataOut <= X"0"&dataIn(7 downto 4);
+			when 12 => dataOut <= X"0"&dataIn(3 downto 0);
+			when others => dataOut <= X"76";
+		end case;
+
 end process;
-end behavior;
+
+
+process(clock)
+begin
+	if(clock'EVENT AND clock = '1')then
+		CASE state is
+		when start =>
+			if cont /= X"00000"THEN
+				cont <= cont-1;
+				reset <= '0';
+				state <= start;
+				enable <= '0';
+			ELSE	
+				reset <= '1';
+				enable <= '1';
+				address <= slave_addr;
+				r_w <= '0';
+				dataOut <= dataOut;
+				state <= write_data;
+			END IF;
+		when write_data =>
+		busyReg<=busySig;
+		regData<=dataIn;
+		if busySig = '0' and busySig/=busyReg then
+			if byteSel /= MaxByte then
+				byteSel<=byteSel+1;
+				state<=write_data;
+			else
+				byteSel<= 9;
+				state<=repeat;
+			end if;
+		end if;
+		
+		when repeat=>
+		enable<='0';
+		if regData/=dataIn then
+			state<=start;
+		else
+			state<=repeat;
+		end if;
+	end case;
+	end if;
+end process;
+			
+end behavioral;
 	
 	
