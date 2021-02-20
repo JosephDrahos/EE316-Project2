@@ -83,13 +83,13 @@ BEGIN
         count := count + 1;               --continue clock generation timing
       END IF;
       CASE count IS
-        WHEN 0 TO 249  =>            --first 1/4 cycle of clocking
+        WHEN 0 TO divider-1  =>            --first 1/4 cycle of clocking
           scl_clk <= '0';
           data_clk <= '0';
-        WHEN 250 TO 499 =>    --second 1/4 cycle of clocking
+        WHEN divider TO divider*2-1 =>    --second 1/4 cycle of clocking
           scl_clk <= '0';
           data_clk <= '1';
-        WHEN 500 TO 749 =>  --third 1/4 cycle of clocking
+        WHEN divider*2 TO divider*3-1 =>  --third 1/4 cycle of clocking
           scl_clk <= '1';                 --release scl
           IF(scl = '0') THEN              --detect if slave is stretching clock
             stretch <= '1';
