@@ -1,9 +1,10 @@
 --------------------------------------------------------------------------------
--- Filename     : SRAM_Controller.vhd
--- Author       : Joseph Drahos
--- Date Created : 2021-9-2
--- Project      : EE316 Project 2
--- Description  : SRAM Controller Code
+-- Filename      : SRAM_Controller.vhd
+-- Author        : Joseph Drahos and Chandler Kent
+-- Date Created  : 2021-9-2
+-- Project       : EE316 Project 2
+-- Description   : SRAM Controller Code\
+-- Last Modified : 2021-20-2
 --------------------------------------------------------------------------------
 
 -----------------
@@ -24,7 +25,7 @@ port
 
   I_SYSTEM_RST_N  : in std_logic;                    -- Input signal to reset SRAM data form ROM
 
-  COUNT_EN : in std_logic;
+  COUNT_EN : in std_logic;                           -- *** Pulse? ***
 
   RW         : in std_logic;
 
@@ -38,20 +39,21 @@ port
 
   UB    : out std_logic;
   LB    : out std_logic;
+  -- ready    : out std_logic;    -- *** ready needed for edge detector? ***
 
   -- digit selection input
   IN_DATA      : in std_logic_vector(15 downto 0);    -- gives the values of the digits to be illuminated
                                                             -- bits 0-3: digit 1; bits 4-7: digit 2, bits 8-11: digit 3
                                                             -- bits 12-15: digit 4
 
-  IN_DATA_ADDR : in std_logic_vector(17 downto 0);
+  IN_DATA_ADDR : in std_logic_vector(17 downto 0);    -- *** How did you implement 17 in previous project ***
 
 
   -- seven segment display digit selection port
   OUT_DATA    : out std_logic_vector(15 downto 0);       -- if bit is 1 then digit is activated and if bit is 0 digit is inactive
                                                             -- bits 0-3: digit 1; bits 3-7: digit 2, bit 7: digit 4
 
-  OUT_DATA_ADR : out std_logic_vector(17 downto 0)
+  OUT_DATA_ADR : out std_logic_vector(17 downto 0)      -- *** I believe this will just come from counter in this project and is not needed here***
 
   );
 end SRAM_controller;
