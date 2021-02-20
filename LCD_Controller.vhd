@@ -34,7 +34,8 @@ end LCD_Controller;
 
 architecture LUT of LCD_Controller is
   type LCD_STATE is (init, ready, send);
-   signal state : LCD_STATE;
+  signal state : LCD_STATE;
+  signal data_buffer : std_logic_vector(7 downto 0);
 begin
   LCD_Controller_FSM : process (clk, reset_n)
     variable count : integer := 0; --clock counter
@@ -113,22 +114,40 @@ begin
 
           when send =>
             busy <= '1';
-            --dont exit for 50us
-            if (count < (50*clk_freq))then
-              if(count < clk_freq) then
-                e <= '0';
-              elsif(count < (15*clk_freq))then
-                e <= '1';
-              elsif(count < (30*clk_freq))then
-                e <= '0';
-              end if;
-              count := count + 1;
-              state <= send;
-            else
-              count := 0;
-              state <= ready;
-            end if;
-
+				if(lcd_bus(9) = '0') then --sending command
+					if(count < (220*clk_freq))then --wait for 2.2 ms
+						if(count < 10*clk_freq)then
+							e <= '0';
+							lcd_data <= (others => '0');
+						elsif(count < 210)then
+							e <= '1';
+							lcd_data <= lcd_bus(7 downto 0);
+						else 
+							e <= '0';
+							lcd_data <= (others => '0');
+						end if;
+						count := count + 1;
+						state <= send;
+					end if;
+					count := 0;
+				   state <= ready;
+				else --sending characters
+					--dont exit for 50us
+					if (count < (50*clk_freq))then
+					  if(count < clk_freq) then
+						 e <= '0';
+					  elsif(count < (15*clk_freq))then
+						 e <= '1';
+					  elsif(count < (30*clk_freq))then
+						 e <= '0';
+					  end if;
+					  count := count + 1;
+					  state <= send;
+					else
+					  count := 0;
+					  state <= ready;
+					end if;
+				end if;
         end case;
         --reset
         if(reset_n = '0')then
