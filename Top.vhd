@@ -15,6 +15,15 @@ entity Top is
 	 pwmbutton : in std_logic; --button to toggle between different frequencies
 	 
 	 
+	 -- SRAM outputs
+    SRAM_DATA_ADDR : out std_logic_vector(17 downto 0);
+    DIO   : inout std_logic_vector(15 downto 0);
+    CE  : out std_logic;
+    WE  : out std_logic;     -- signal for writing to SRAM
+    OE    : out std_logic;     -- Input signal for enabling output
+    UB    : out std_logic;
+    LB    : out std_logic;
+		  
     --LCD Outputs
     RS              : out std_logic;
     E               : out std_logic;
@@ -26,6 +35,41 @@ entity Top is
 end Top;
 
 architecture archTop  of  Top is
+  ----------------
+  -- COMPONENTS --
+  ----------------
+
+  -- SRAM controlller
+  component SRAM_controller is
+  port
+  (
+    I_CLK_50MHZ     : in std_logic;
+    I_SYSTEM_RST_N  : in std_logic;
+    COUNT_EN : in std_logic;
+    RW         : in std_logic;
+    DIO : inout std_logic_vector(15 downto 0);
+    CE : out std_logic;
+    WE    : out std_logic;
+    OE    : out std_logic;
+    UB    : out std_logic;
+    LB    : out std_logic;
+    IN_DATA      : in std_logic_vector(15 downto 0);
+    IN_DATA_ADDR : in std_logic_vector(17 downto 0);
+    OUT_DATA    : out std_logic_vector(15 downto 0);
+    OUT_DATA_ADR : out std_logic_vector(17 downto 0)
+  );
+  end component SRAM_controller;
+  
+  -- ROM driver (auto generated signature)
+  component ROM is
+  	port
+  	(
+  		address		: in std_logic_vector (7 downto 0);
+  		clock		  : in std_logic  := '1';
+  		q		      : out std_logic_vector (15 downto 0)
+  	);
+  end component ROM;
+  
   component LCD_Controller is
     port
     (
@@ -39,18 +83,36 @@ architecture archTop  of  Top is
     );
   end component LCD_Controller;
 
-  signal old_reset_value : std_logic := '1';
-  signal lcd_data_in : std_logic_vector (9 downto 0);
-  signal lcd_busy : std_logic;
-  signal lcd_en : std_logic;
+  --fsm signals
   type TOP_STATES is (init, ready, test, pause, pwm60, pwm120, pwm1000);
   signal state : TOP_STATES := init;
   signal nextstate : TOP_STATES;
   signal pwmstate : TOP_STATES := pwm60;
   signal statechange : std_logic := '0';
   signal lcd_ready : std_logic := '1';
+  
+  --lcd signals
+  signal lcd_data_in : std_logic_vector (9 downto 0);
+  signal lcd_busy : std_logic;
+  signal lcd_en : std_logic;
+  
+  -- sram Signals
+  signal sram_data_address 	 : unsigned(17 downto 0);
+  signal sram_data         	 : std_logic_vector(15 downto 0);
+  signal out_data_signal       : std_logic_vector(15 downto 0);
+  signal count_enable          : std_logic;
+  signal sram_RW               : std_logic;
+  
+  -- ROM initialization signal
+  signal rom_initialize     : std_logic := '0';
+  signal rom_data           : std_logic_vector(15 downto 0);
+  signal init_data_addr     : unsigned(17 downto 0) := (others => '1');
+  
+  --counter signals
   shared variable lcd_counter : integer := 0;
-begin
+  signal one_hz_counter_signal : unsigned(25 downto 0) := (others => '0');
+  
+ begin
   LCD : LCD_Controller
   port map(
     clk => I_CLK_50MHZ,
@@ -64,7 +126,48 @@ begin
     lcd_data => lcd_data_out
   );
 
---todo: wont enter pwm states 
+  
+	 -- SRAM  controller port map
+	 SRAM : SRAM_controller
+	 port map(
+		  I_CLK_50MHZ    => I_CLK_50MHZ,
+		  I_SYSTEM_RST_N => I_SYSTEM_RST,
+		  COUNT_EN       => count_enable,
+		  RW             => sram_RW,
+		  DIO            => DIO,
+		  CE           => CE,
+		  WE           => WE,
+		  OE             => OE,
+		  UB             => UB,
+		  LB             => LB,
+		  IN_DATA        => sram_data,
+		  IN_DATA_ADDR   => std_logic_vector(sram_data_address),
+		  OUT_DATA       => out_data_signal,
+		  OUT_DATA_ADR   => SRAM_DATA_ADDR
+	 );
+
+	 -- ROM driver port map
+    ROM_UNIT : ROM
+    port map(
+        address	=> std_logic_vector(init_data_addr(7 downto 0)),
+        clock	  => I_CLK_50MHZ,
+        q	      => rom_data
+    );
+
+  ONE_HZ_CLOCK : process (I_CLK_50MHZ, I_SYSTEM_RST)
+     begin
+       if(I_SYSTEM_RST = '0') then
+		   one_hz_counter_signal <= (others => '0');
+       elsif (rising_edge(I_CLK_50MHZ)) then
+			one_hz_counter_signal <= one_hz_counter_signal + 1;
+			--1 hz frequency
+			if (one_hz_counter_signal = "10111110101111000001111111") then
+				 one_hz_counter_signal <= (others => '0');
+			else
+			end if;
+		end if;
+	end process ONE_HZ_CLOCK;
+  
   top_fsm : process (I_CLK_50MHZ, I_SYSTEM_RST)
 	begin
 		if(rising_edge(I_CLK_50MHZ))then
@@ -111,7 +214,15 @@ begin
 							state <= ready;
 							statechange <= '1';
 						elsif(testpwmbutton = '0')then
-							nextstate <= pwmstate;
+							if(pwmstate = pwm60)then 
+								nextstate <= pwm60;
+							elsif(pwmstate = pwm120)then
+								nextstate <= pwm120;
+							elsif(pwmstate <= pwm1000)then
+								nextstate <= pwm1000;
+							else	
+								nextstate <= pwm60;
+							end if;
 							state <= ready;
 							statechange <= '1';
 						elsif(initbutton = '0')then
@@ -131,7 +242,15 @@ begin
 							state <= ready;
 							statechange <= '1';
 						elsif(testpwmbutton = '0')then
-							nextstate <= pwmstate;
+							if(pwmstate = pwm60)then 
+								nextstate <= pwm60;
+							elsif(pwmstate = pwm120)then
+								nextstate <= pwm120;
+							elsif(pwmstate <= pwm1000)then
+								nextstate <= pwm1000;
+							else	
+								nextstate <= pwm60;
+							end if;
 							state <= ready;
 							statechange <= '1';
 						elsif(initbutton = '0')then
@@ -207,6 +326,8 @@ begin
 					else 
 						state <= pwm1000;
 					end if;
+				when others =>
+					state <= init;
 			end case;
 		end if;
   end process top_fsm;
@@ -274,14 +395,14 @@ begin
 					end if;
 				when ready =>
 					--ready clears display due to clear command causing issues
+					if(statechange = '1')then
+						lcd_counter := 0;
+					end if;
 					if(lcd_busy = '0')then
-						if(lcd_counter < 2)then
+						if(lcd_counter < 4)then
 							lcd_ready <= '0';
 							lcd_en <= '1';
-							lcd_data_in <= "0010000001";--position
-						elsif(lcd_counter < 4)then
-							lcd_en <= '1';
-							lcd_data_in <= "1000100000";--space
+							lcd_data_in <= "0010000000";--position
 						elsif(lcd_counter < 6)then
 							lcd_en <= '1';
 							lcd_data_in <= "1000100000";--space
@@ -332,10 +453,10 @@ begin
 							lcd_data_in <= "1000100000";--space
 						elsif(lcd_counter < 38)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000100000";--space
+							lcd_data_in <= "1000100000";--space16
 						elsif(lcd_counter < 40)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000100000";--space
+							lcd_data_in <= "0011000000";--second line
 						elsif(lcd_counter < 42)then
 							lcd_en <= '1';
 							lcd_data_in <= "1000100000";--space
@@ -363,7 +484,28 @@ begin
 						elsif(lcd_counter < 58)then
 							lcd_en <= '1';
 							lcd_data_in <= "1000100000";--space
-						elsif(lcd_counter >= 60)then
+						elsif(lcd_counter < 60)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 62)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 64)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 66)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 68)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 70)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 72)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter >= 72)then
 							lcd_ready <= '1';
 							lcd_en <= '0';
 							lcd_counter := 0;
@@ -377,7 +519,7 @@ begin
 						if(lcd_counter < 4)then 
 							lcd_ready <= '0';
 							lcd_en <= '1';
-							lcd_data_in <= "0010000110"; --position
+							lcd_data_in <= "0010000011"; --position
 						elsif(lcd_counter < 6)then
 							lcd_en <= '1';
 							lcd_data_in <= "1001010100";--T
@@ -390,7 +532,25 @@ begin
 						elsif(lcd_counter < 12)then
 							lcd_en <= '1';
 							lcd_data_in <= "1001110100";--t
-						elsif(lcd_counter >= 14)then
+						elsif(lcd_counter < 14)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 16)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001001101";--M
+						elsif(lcd_counter < 18)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101111";--o
+						elsif(lcd_counter < 20)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100100";--d
+						elsif(lcd_counter < 22)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 26)then
+							lcd_en <= '1';
+							lcd_data_in <= "0011000100";--second line
+						elsif(lcd_counter >= 26)then
 							lcd_ready <= '1';
 							lcd_counter := 0;
 							lcd_en <= '0';
@@ -404,7 +564,7 @@ begin
 						if(lcd_counter < 4)then 
 							lcd_ready <= '0';
 							lcd_en <= '1';
-							lcd_data_in <= "0010000110"; --position
+							lcd_data_in <= "0010000011"; --position
 						elsif(lcd_counter < 6)then
 							lcd_en <= '1';
 							lcd_data_in <= "1001010000";--P
@@ -420,7 +580,25 @@ begin
 						elsif(lcd_counter < 14)then
 							lcd_en <= '1';
 							lcd_data_in <= "1001100101";--e
-						elsif(lcd_counter >= 16)then
+						elsif(lcd_counter < 16)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 18)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001001101";--M
+						elsif(lcd_counter < 20)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101111";--o
+						elsif(lcd_counter < 22)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100100";--d
+						elsif(lcd_counter < 24)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 28)then
+							lcd_en <= '1';
+							lcd_data_in <= "0011000100";--second line
+						elsif(lcd_counter >= 28)then
 							lcd_ready <= '1';
 							lcd_counter := 0;
 							lcd_en <= '0';
@@ -431,26 +609,71 @@ begin
 					end if;
 				when pwm60 =>
 					if(lcd_busy = '0')then
-						if(lcd_counter < 2)then 
+						if(lcd_counter < 4)then 
 							lcd_ready <= '0';
 							lcd_en <= '1';
-							lcd_data_in <= "0010000110"; --position
-						elsif(lcd_counter < 4)then
-							lcd_en <= '1';
-							lcd_data_in <= "1001010000";--P
+							lcd_data_in <= "0010000001"; --position
 						elsif(lcd_counter < 6)then
 							lcd_en <= '1';
-							lcd_data_in <= "1001010111";--W
+							lcd_data_in <= "1001010000";--P
 						elsif(lcd_counter < 8)then
 							lcd_en <= '1';
-							lcd_data_in <= "1001001101";--M
+							lcd_data_in <= "1001010111";--W
 						elsif(lcd_counter < 10)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110110";--6
+							lcd_data_in <= "1001001101";--M
 						elsif(lcd_counter < 12)then
 							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 14)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001000111";--G
+						elsif(lcd_counter < 16)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 18)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101110";--n
+						elsif(lcd_counter < 20)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 22)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001110010";--r
+						elsif(lcd_counter < 24)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100001";--a
+						elsif(lcd_counter < 26)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001110100";--t
+						elsif(lcd_counter < 28)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101001";--i
+						elsif(lcd_counter < 30)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101111";--o
+						elsif(lcd_counter < 33)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101110";--n
+						elsif(lcd_counter < 36)then
+							lcd_en <= '1';
+							lcd_data_in <= "0011000110";--2ndline
+						elsif(lcd_counter < 38)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000110110";--6
+						elsif(lcd_counter < 40)then
+							lcd_en <= '1';
 							lcd_data_in <= "1000110000";--0
-						elsif(lcd_counter >= 12)then
+						elsif(lcd_counter < 42)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 44)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001001000";--H
+						elsif(lcd_counter < 46)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001011010";--Z
+						elsif(lcd_counter >= 46)then
 							lcd_ready <= '1';
 							lcd_counter := 0;
 							lcd_en <= '0';
@@ -461,29 +684,74 @@ begin
 					end if;
 				when pwm120 =>
 					if(lcd_busy = '0')then
-						if(lcd_counter < 2)then 
+						if(lcd_counter < 4)then 
 							lcd_ready <= '0';
 							lcd_en <= '1';
-							lcd_data_in <= "0010000101"; --position
-						elsif(lcd_counter < 4)then
-							lcd_en <= '1';
-							lcd_data_in <= "1001010000";--P
+							lcd_data_in <= "0010000001"; --position
 						elsif(lcd_counter < 6)then
 							lcd_en <= '1';
-							lcd_data_in <= "1001010111";--W
+							lcd_data_in <= "1001010000";--P
 						elsif(lcd_counter < 8)then
 							lcd_en <= '1';
-							lcd_data_in <= "1001001101";--M
+							lcd_data_in <= "1001010111";--W
 						elsif(lcd_counter < 10)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110001";--1
+							lcd_data_in <= "1001001101";--M
 						elsif(lcd_counter < 12)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110010";--2
+							lcd_data_in <= "1000100000";--space
 						elsif(lcd_counter < 14)then
 							lcd_en <= '1';
+							lcd_data_in <= "1001000111";--G
+						elsif(lcd_counter < 16)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 18)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101110";--n
+						elsif(lcd_counter < 20)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 22)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001110010";--r
+						elsif(lcd_counter < 24)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100001";--a
+						elsif(lcd_counter < 26)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001110100";--t
+						elsif(lcd_counter < 28)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101001";--i
+						elsif(lcd_counter < 30)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101111";--o
+						elsif(lcd_counter < 33)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101110";--n
+						elsif(lcd_counter < 36)then
+							lcd_en <= '1';
+							lcd_data_in <= "0011000101";--2ndline
+						elsif(lcd_counter < 38)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000110001";--1
+						elsif(lcd_counter < 40)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000110010";--2
+						elsif(lcd_counter < 42)then
+							lcd_en <= '1';
 							lcd_data_in <= "1000110000";--0
-						elsif(lcd_counter >= 14)then
+						elsif(lcd_counter < 44)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 46)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001001000";--H
+						elsif(lcd_counter < 48)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001011010";--Z
+						elsif(lcd_counter >= 48)then
 							lcd_ready <= '1';
 							lcd_counter := 0;
 							lcd_en <= '0';
@@ -494,35 +762,77 @@ begin
 					end if;
 				when pwm1000 =>
 					if(lcd_busy = '0')then
-						if(lcd_counter < 2)then 
+						if(lcd_counter < 4)then 
 							lcd_ready <= '0';
 							lcd_en <= '1';
-							lcd_data_in <= "0010000100"; --position
-						elsif(lcd_counter < 4)then
-							lcd_en <= '1';
-							lcd_data_in <= "1001010000";--P
+							lcd_data_in <= "0010000001"; --position
 						elsif(lcd_counter < 6)then
 							lcd_en <= '1';
-							lcd_data_in <= "1001010111";--W
+							lcd_data_in <= "1001010000";--P
 						elsif(lcd_counter < 8)then
 							lcd_en <= '1';
-							lcd_data_in <= "1001001101";--M
+							lcd_data_in <= "1001010111";--W
 						elsif(lcd_counter < 10)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110001";--1
+							lcd_data_in <= "1001001101";--M
 						elsif(lcd_counter < 12)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110000";--0
+							lcd_data_in <= "1000100000";--space
 						elsif(lcd_counter < 14)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110000";--0
+							lcd_data_in <= "1001000111";--G
 						elsif(lcd_counter < 16)then
 							lcd_en <= '1';
-							lcd_data_in <= "1000110000";--0
+							lcd_data_in <= "1001100101";--e
 						elsif(lcd_counter < 18)then
 							lcd_en <= '1';
+							lcd_data_in <= "1001101110";--n
+						elsif(lcd_counter < 20)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100101";--e
+						elsif(lcd_counter < 22)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001110010";--r
+						elsif(lcd_counter < 24)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001100001";--a
+						elsif(lcd_counter < 26)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001110100";--t
+						elsif(lcd_counter < 28)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101001";--i
+						elsif(lcd_counter < 30)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101111";--o
+						elsif(lcd_counter < 33)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001101110";--n
+						elsif(lcd_counter < 36)then
+							lcd_en <= '1';
+							lcd_data_in <= "0011000101";--2ndline
+						elsif(lcd_counter < 38)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000110001";--1
+						elsif(lcd_counter < 40)then
+							lcd_en <= '1';
 							lcd_data_in <= "1000110000";--0
-						elsif(lcd_counter >= 18)then
+						elsif(lcd_counter < 42)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000110000";--0
+						elsif(lcd_counter < 44)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000110000";--0
+						elsif(lcd_counter < 46)then
+							lcd_en <= '1';
+							lcd_data_in <= "1000100000";--space
+						elsif(lcd_counter < 48)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001001000";--H
+						elsif(lcd_counter < 50)then
+							lcd_en <= '1';
+							lcd_data_in <= "1001011010";--Z
+						elsif(lcd_counter >= 50)then
 							lcd_ready <= '1';
 							lcd_counter := 0;
 							lcd_en <= '0';
@@ -533,7 +843,6 @@ begin
 					end if;
 				end case;
 			
-			old_reset_value <= I_SYSTEM_RST;
 		end if;
   end process lcd_display;
 

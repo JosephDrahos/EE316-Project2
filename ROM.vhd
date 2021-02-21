@@ -33,25 +33,25 @@
 --applicable agreement for further details.
 
 
-LIBRARY ieee;				--use library for(Header)
-USE ieee.std_logic_1164.all;		-- Using Data types
+LIBRARY ieee;
+USE ieee.std_logic_1164.all;
 
 LIBRARY altera_mf;
-USE altera_mf.all;			-- using Altera board header File
+USE altera_mf.all;
 
-ENTITY ROM IS				-- Declaring Entity for ROM
+ENTITY ROM IS
 	PORT
 	(
-		address		: IN STD_LOGIC_VECTOR (7 DOWNTO 0);	-- 8 bit input vector
-		clock		: IN STD_LOGIC  := '1';			-- Clock Signal
-		q		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)	-- 16 bit output vector
+		address		: IN STD_LOGIC_VECTOR (7 DOWNTO 0);
+		clock		: IN STD_LOGIC  := '1';
+		q		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
 	);
 END ROM;
 
 
-ARCHITECTURE SYN OF rom IS				-- behaviourial Declaration of ROM
+ARCHITECTURE SYN OF rom IS
 
-	SIGNAL sub_wire0	: STD_LOGIC_VECTOR (15 DOWNTO 0); 	-- 16 Bit vector Signal
+	SIGNAL sub_wire0	: STD_LOGIC_VECTOR (15 DOWNTO 0);
 
 
 
@@ -68,7 +68,7 @@ ARCHITECTURE SYN OF rom IS				-- behaviourial Declaration of ROM
 		outdata_aclr_a		: STRING;
 		outdata_reg_a		: STRING;
 		widthad_a		: NATURAL;
-		width_a			: NATURAL;
+		width_a		: NATURAL;
 		width_byteena_a		: NATURAL
 	);
 	PORT (
