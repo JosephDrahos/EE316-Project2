@@ -329,6 +329,15 @@ architecture archTop  of  Top is
 				
 				when test =>
 					dataIn <= out_data_signal;
+				
+				when pause=>
+				
+				when pwm60 =>
+				 
+				when pwm120 =>
+				 
+				when pwm1000 =>
+				 
 			end case;
 			end if;
 	end process i2c_user_logic_process;
