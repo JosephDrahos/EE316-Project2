@@ -29,7 +29,11 @@ entity Top is
     RW              : out std_logic;
 	 lcd_on			  : out std_logic;
 	 lcd_blon		  : out std_logic;
-	 lcd_data_out    : out std_logic_vector (7 downto 0)
+	 lcd_data_out    : out std_logic_vector (7 downto 0);
+	 
+	 --I2C Controller Outputs
+	 SCL				: inout std_logic;
+	 SDA	  			: inout std_logic
   );
 end Top;
 
@@ -81,6 +85,16 @@ architecture archTop  of  Top is
       lcd_data      : out std_logic_vector (7 downto 0)
     );
   end component LCD_Controller;
+  
+  component i2c_user_logic is
+   Generic(slave_addr : std_logic_vector(6 downto 0) := "1110001");
+	port(
+		clock				: in std_logic;
+		dataIn			: in std_logic;
+		outSCL			: inout STD_logic;
+		outSDA 			: inout std_logic
+	);
+	end component i2c_user_logic;
 
   component debounce is
 	 port(
@@ -119,6 +133,12 @@ architecture archTop  of  Top is
   signal lcd_en : std_logic;
   signal hex_address_in_binary : std_logic_vector(15 downto 0);
   signal hex_data_in_binary : std_logic_vector(31 downto 0);
+  
+  --i2c user logic signals
+  signal clock, outSDA, outSCL	: std_logic;
+  signal slave_addr					: std_logic_vector(6 downto 0);
+  signal dataIn 						: std_logic_vector(15 downto 0);
+  signal cont 							: std_logic_vector(31 downto 0);
   
   -- sram Signals
   signal sram_data_address 	 : unsigned(17 downto 0);
@@ -189,7 +209,16 @@ architecture archTop  of  Top is
 		  OUT_DATA       => out_data_signal,
 		  OUT_DATA_ADR   => SRAM_DATA_ADDR
 	 );
-
+	
+	--i2c controller port map
+	inst1: i2c_user_logic
+	port map(
+		clock 	=> clock,
+		dataIn	=> dataIn,
+		outSDA 	=> outSDA,
+		outSCL 	=> outSCL
+	);
+	
 	 -- ROM driver port map
     ROM_UNIT : ROM
     port map(
@@ -283,6 +312,19 @@ architecture archTop  of  Top is
 			end case;
 		end if;	
   end process SRAM_process;
+  
+  i2c_user_logic_process : process(I_CLK_50MHZ)
+  begin
+		if(cont < "11111111111111111111111100000000") then
+				dataIn<="0000001101010101";
+		else 
+				dataIn<="0000000111110000";
+		end if;
+		if (cont = "11111111111111111111111111111111") then
+				cont <= "00000000000000000000000000000000";
+		end if;
+		end process i2c_user_logic_process;
+  
   
   top_fsm : process (I_CLK_50MHZ, I_SYSTEM_RST)
 	begin
@@ -1013,3 +1055,4 @@ architecture archTop  of  Top is
   end process lcd_display;
 
 end architecture;
+
