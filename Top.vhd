@@ -90,7 +90,7 @@ architecture archTop  of  Top is
    Generic(slave_addr : std_logic_vector(6 downto 0) := "1110001");
 	port(
 		clock				: in std_logic;
-		dataIn			: in std_logic;
+		dataIn			: in std_logic_vector(15 downto 0);
 		outSCL			: inout STD_logic;
 		outSDA 			: inout std_logic
 	);
@@ -313,17 +313,25 @@ architecture archTop  of  Top is
 		end if;	
   end process SRAM_process;
   
-  i2c_user_logic_process : process(I_CLK_50MHZ)
-  begin
-		if(cont < "11111111111111111111111100000000") then
+  i2c_user_logic_process : process(I_CLK_50MHZ, I_SYSTEM_RST)
+	begin
+		if(rising_edge(I_CLK_50MHZ))then
+			if (cont < "11111111111111111111111100000000") then
 				dataIn<="0000001101010101";
-		else 
+			else 
 				dataIn<="0000000111110000";
-		end if;
-		if (cont = "11111111111111111111111111111111") then
+			end if;
+			if (cont = "11111111111111111111111111111111") then
 				cont <= "00000000000000000000000000000000";
-		end if;
-		end process i2c_user_logic_process;
+			end if;
+			case state is
+				when init =>
+				
+				when test =>
+					dataIn <= out_data_signal;
+			end case;
+			end if;
+	end process i2c_user_logic_process;
   
   
   top_fsm : process (I_CLK_50MHZ, I_SYSTEM_RST)
