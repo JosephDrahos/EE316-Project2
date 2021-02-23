@@ -33,7 +33,10 @@ entity Top is
 	 
 	 --I2C Controller Outputs
 	 SCL				: inout std_logic;
-	 SDA	  			: inout std_logic
+	 SDA	  			: inout std_logic;
+	 
+	 --pwm outputs
+	 pwm_out : out std_logic
   );
 end Top;
 
@@ -95,6 +98,19 @@ architecture archTop  of  Top is
 		outSDA 			: inout std_logic
 	);
 	end component i2c_user_logic;
+	
+	component pwmgenerator is
+	  port(
+		 clk : in std_logic;
+		 reset : in std_logic;
+		 en    : in std_logic;
+		 data_in : in std_logic_vector(7 downto 0);
+		 state : in std_logic_vector(2 downto 0);
+
+		 request_new_data : out std_logic;
+		 pwm_out : out std_logic
+	  );
+	end component pwmgenerator;
 
   component debounce is
 	 port(
@@ -126,6 +142,7 @@ architecture archTop  of  Top is
   signal lcd_ready : std_logic := '1';
   signal entered_init : std_logic := '1';
   signal left_init : std_logic := '0';
+  signal bin_state : std_logic_vector(2 downto 0) := "000";
   
   --lcd signals
   signal lcd_data_in : std_logic_vector (9 downto 0);
@@ -142,12 +159,19 @@ architecture archTop  of  Top is
   
   -- sram Signals
   signal sram_data_address 	 : unsigned(17 downto 0);
+  signal pwm_sram_data_address : unsigned(17 downto 0) := (others => '0');
   signal sram_data         	 : std_logic_vector(15 downto 0);
   signal out_data_signal       : std_logic_vector(15 downto 0);
   signal count_enable          : std_logic;
   signal sram_RW               : std_logic;
   signal sram_ready 				 : std_logic;
 
+  
+  --pwm signals
+  signal pwm_enable 		: std_logic;
+  signal pwm_data			:std_logic_vector(15 downto 0);
+  signal pwm_request_data : std_logic;
+  
   
   -- ROM initialization signal
   signal rom_initialize     : std_logic := '0';
@@ -213,10 +237,23 @@ architecture archTop  of  Top is
 	--i2c controller port map
 	inst1: i2c_user_logic
 	port map(
-		clock 	=> clock,
+		clock 	=> I_CLK_50MHZ,
 		dataIn	=> dataIn,
-		outSDA 	=> outSDA,
-		outSCL 	=> outSCL
+		outSDA 	=> SDA,
+		outSCL 	=> SCL
+	);
+	
+	--pwm generator port map
+	pwm : pwmgenerator
+	port map(
+		clk => I_CLK_50MHZ,
+		reset => I_SYSTEM_RST,
+		en => pwm_enable,
+		data_in => out_data_signal(15 downto 8),
+		state => bin_state,
+
+		request_new_data => pwm_request_data,
+		pwm_out => pwm_out
 	);
 	
 	 -- ROM driver port map
@@ -304,11 +341,35 @@ architecture archTop  of  Top is
 				 when pause =>
 				 
 				 when pwm60 =>
-				 
+					sram_RW <= '1';
+					if(pwm_request_data <= '1')then
+						if (pwm_sram_data_address(7 downto 0) = "11111111") then
+							  pwm_sram_data_address <= (others  => '0');
+						elsif (counter_paused = '0') then
+							  pwm_sram_data_address <= pwm_sram_data_address + 1;
+						end if;
+						sram_data_address <= pwm_sram_data_address;
+					end if;
 				 when pwm120 =>
-				 
+					sram_RW <= '1';
+					if(pwm_request_data <= '1')then
+						if (pwm_sram_data_address(7 downto 0) = "11111111") then
+							  pwm_sram_data_address <= (others  => '0');
+						elsif (counter_paused = '0') then
+							  pwm_sram_data_address <= pwm_sram_data_address + 1;
+						end if;
+						sram_data_address <= pwm_sram_data_address;
+					end if;
 				 when pwm1000 =>
-				 
+					sram_RW <= '1';
+					if(pwm_request_data <= '1')then
+						if (pwm_sram_data_address(7 downto 0) = "11111111") then
+							  pwm_sram_data_address <= (others  => '0');
+						elsif (counter_paused = '0') then
+							  pwm_sram_data_address <= pwm_sram_data_address + 2;
+						end if;
+						sram_data_address <= pwm_sram_data_address;
+					end if;
 			end case;
 		end if;	
   end process SRAM_process;
@@ -329,7 +390,8 @@ architecture archTop  of  Top is
 				
 				when test =>
 					dataIn <= out_data_signal;
-				
+				when ready =>
+					dataIn <= out_data_signal;
 				when pause=>
 				
 				when pwm60 =>
@@ -353,15 +415,19 @@ architecture archTop  of  Top is
 			case state is 
 				when init =>
 					entered_init <= '0';
+					pwm_enable <= '0';
 					if(lcd_ready = '1' and buttons_debounce(0) = '1' and sram_ready = '1')then --waits for displays to finish
 						state <= ready;
+						bin_state <= "001";
 						nextstate <= test;
 						statechange <= '1';
 						left_init <= '1';
 					else 
 						state <= init;
+						bin_state <= "000";
 					end if;
 				when ready =>
+					pwm_enable <= '0';
 					if(statechange = '1')then
 						statechange <= '0';
 					end if;
@@ -372,28 +438,37 @@ architecture archTop  of  Top is
 						if(nextstate = init)then
 							entered_init <= '1';
 							state <= init;
+							bin_state <= "000";
 						elsif(nextstate = test)then
 							state <= test;
+							bin_state <= "010";
 						elsif(nextstate = pause)then
 							state <= pause;
+							bin_state <= "011";
 						elsif(nextstate = pwm60)then
 							state <= pwm60;
+							bin_state <= "100";
 						elsif(nextstate = pwm120)then
 							state <= pwm120;
+							bin_state <= "101";
 						elsif(nextstate = pwm1000)then
 							state <= pwm1000;
+							bin_state <= "110";
 						elsif(nextstate = ready)then
 							state <= ready;
+							bin_state <= "001";
 						end if;
 					else
 						state <= ready;
 					end if;
 				when test =>
 					counter_paused <= '0';
+					pwm_enable <= '0';
 					if(lcd_ready = '1')then --waits for displays to finish
 						if(buttons_debounce(1) = '0')then
 							nextstate <= pause;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(2) = '0')then
 							if(pwmstate = pwm60)then 
@@ -406,23 +481,28 @@ architecture archTop  of  Top is
 								nextstate <= pwm60;
 							end if;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(0) = '0')then
 							nextstate <= init;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						else
 							nextstate <= test;
 						end if;
 					else 
 						state <= test;
+						bin_state <= "010";
 					end if;
 				when pause =>
 					counter_paused <= '1';
+					pwm_enable <= '0';
 					if(lcd_ready = '1')then --waits for displays to finish
 						if(buttons_debounce(1) = '0')then
 							nextstate <= test;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(2) = '0')then
 							if(pwmstate = pwm60)then 
@@ -435,82 +515,101 @@ architecture archTop  of  Top is
 								nextstate <= pwm60;
 							end if;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(0) = '0')then
 							nextstate <= init;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						else
 							nextstate <= test;
 						end if;
 					else 
 						state <= pause;
+						bin_state <= "011";
 					end if;
 				when pwm60 =>
+					pwm_enable <= '1';
 					if(lcd_ready = '1')then --waits for displays to finish
 						if(buttons_debounce(2) = '0')then
 							nextstate <= test;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(0) = '0')then
 							nextstate <= init;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(3) = '0')then
 							nextstate <= pwm120;
 							pwmstate <= pwm120;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						else
 							nextstate <= pwm60;
 						end if;
 					else 
 						state <= pwm60;
+						bin_state <= "100";
 					end if;
 				when pwm120 =>
+					pwm_enable <= '1';
 					if(lcd_ready = '1')then --waits for displays to finish
 						if(buttons_debounce(2) = '0')then
 							nextstate <= test;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(0) = '0')then
 							nextstate <= init;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(3) = '0')then
 							nextstate <= pwm1000;
 							pwmstate <= pwm1000;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						else
 							nextstate <= pwm120;
 						end if;
 					else 
 						state <= pwm120;
+						bin_state <= "101";
 					end if;
 				when pwm1000 =>
+					pwm_enable <= '1';
 					if(lcd_ready = '1')then --waits for displays to finish
 						if(buttons_debounce(2) = '0')then
 							nextstate <= test;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(0) = '0')then
 							nextstate <= init;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						elsif(buttons_debounce(3) = '0')then
 							nextstate <= pwm60;
 							pwmstate <= pwm60;
 							state <= ready;
+							bin_state <= "001";
 							statechange <= '1';
 						else
 							nextstate <= pwm1000;
 						end if;
 					else 
 						state <= pwm1000;
+						bin_state <= "110";
 					end if;
 				when others =>
 					state <= init;
+					bin_state <= "000";
 			end case;
 		end if;
   end process top_fsm;
