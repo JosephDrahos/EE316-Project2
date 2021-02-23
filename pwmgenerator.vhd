@@ -18,7 +18,7 @@ entity pwmgenerator is
     clk : in std_logic;
     reset : in std_logic;
     en    : in std_logic;
-    data_in : in std_logic_vector(7 downto 0);
+    data_in : in std_logic_vector(5 downto 0);
     state : in std_logic_vector(2 downto 0);
 
     request_new_data : out std_logic;
@@ -43,28 +43,31 @@ begin
       elsif(rising_edge(clk))then
          if(en = '1')then
            if(state = "100" or state = "101" or state = "110")then
-             if(state = "100")then
-               --8bit reset
-               if(eightbitcounter = "11111111")then
-                 eightbitcounter <= (others => '0');
-               end if;
-
+             --8bit reset
+				 if(eightbitcounter >= "111111")then
+				   eightbitcounter <= (others => '0');
+				 end if;
+				
+				 --60 hz
+				 if(state = "100")then
                --different frequency pwm change
-               if(std_logic_vector(counter) = sixtyhzcount)then
+               if(std_logic_vector(counter) >= sixtyhzcount)then
                  counter <= (others => '0');
                  request_new_data <= '1';
                else
                  request_new_data <= '0';
                end if;
+				 --120 hz	
              elsif(state = "101")then
-               if(std_logic_vector(counter) = onehundredtwentyhzcount)then
+               if(std_logic_vector(counter) >= onehundredtwentyhzcount)then
                  counter <= (others => '0');
                  request_new_data <= '1';
                else
                  request_new_data <= '0';
                end if;
+				 --1000 hz	
              elsif(state = "110") then
-               if(std_logic_vector(counter) = onethousandhzcount)then
+               if(std_logic_vector(counter) >= onethousandhzcount)then
                  counter <= (others => '0');
                  request_new_data <= '1';
                else
@@ -73,7 +76,7 @@ begin
              end if;
 
              --pwm proportional to input data
-             if(std_logic_vector(eightbitcounter) < data_in)then
+             if(std_logic_vector(eightbitcounter) <= data_in)then
                pwm_out <= '1';
              else
                pwm_out <= '0';
