@@ -104,7 +104,7 @@ architecture archTop  of  Top is
 		 clk : in std_logic;
 		 reset : in std_logic;
 		 en    : in std_logic;
-		 data_in : in std_logic_vector(5 downto 0);
+		 data_in : in std_logic_vector(15 downto 0);
 		 state : in std_logic_vector(2 downto 0);
 
 		 request_new_data : out std_logic;
@@ -183,7 +183,7 @@ architecture archTop  of  Top is
   shared variable lcd_counter : integer := 0;
   signal one_hz_counter_signal : unsigned(25 downto 0) := (others => '0');
   signal counter_paused : std_logic := '1';
-  signal pwm_counter: unsigned(11 downto 0) := (others => '0');
+  signal pwm_counter: unsigned(31 downto 0) := (others => '0');
   
  begin
   --debounces the input buttons
@@ -250,7 +250,7 @@ architecture archTop  of  Top is
 		clk => I_CLK_50MHZ,
 		reset => not I_SYSTEM_RST,
 		en => pwm_enable,
-		data_in => out_data_signal(15 downto 10),--pwm_test_data,--
+		data_in => out_data_signal,--pwm_test_data,--
 		state => bin_state,
 
 		request_new_data => pwm_request_data,
@@ -286,32 +286,14 @@ architecture archTop  of  Top is
 					count_enable <= '0';
 				end if;
 			elsif(state = pwm60)then
-				pwm_counter <= pwm_counter + 1;
-				
-				if(pwm_counter = "110010110111")then
-					count_enable <= '1';
-					pwm_counter <= (others => '0');
-				else
-					count_enable <= '0';
-				end if;
+				pwm_counter <= pwm_counter + 5153;--tuning word
+				count_enable <= '1';
 			elsif(state = pwm120)then
-				pwm_counter <= pwm_counter + 1;
-				
-				if(pwm_counter = "011001011011")then
-					count_enable <= '1';
-					pwm_counter <= (others => '0');
-				else
-					count_enable <= '0';
-				end if;
+				pwm_counter <= pwm_counter + 10307;
+				count_enable <= '1';
 			elsif(state = pwm1000)then
-				pwm_counter <= pwm_counter + 1;
-				
-				if(pwm_counter = "000110000111")then
-					count_enable <= '1';
-					pwm_counter <= (others => '0');
-				else
-					count_enable <= '0';
-				end if;
+				pwm_counter <= pwm_counter + 85899;
+				count_enable <= '1';
 			end if;
 		end if;
 	end process ONE_HZ_CLOCK;
@@ -371,32 +353,17 @@ architecture archTop  of  Top is
 				 when pwm60 =>
 					sram_RW <= '1';
 					if(count_enable <= '1')then
-						if (pwm_sram_data_address(7 downto 0) >= "11111111") then
-							  pwm_sram_data_address <= (others  => '0');
-						else
-							  pwm_sram_data_address <= pwm_sram_data_address + 1;
-						end if;
-						sram_data_address <= pwm_sram_data_address;
+						sram_data_address(7 downto 0) <= pwm_counter(31 downto 24);
 					end if;
 				 when pwm120 =>
 					sram_RW <= '1';
 					if(count_enable <= '1')then
-						if (pwm_sram_data_address(7 downto 0) >= "11111111") then
-							  pwm_sram_data_address <= (others  => '0');
-						else
-							  pwm_sram_data_address <= pwm_sram_data_address + 1;
-						end if;
-						sram_data_address <= pwm_sram_data_address;
+						sram_data_address(7 downto 0) <= pwm_counter(31 downto 24);
 					end if;
 				 when pwm1000 =>
 					sram_RW <= '1';
 					if(count_enable <= '1')then
-						if (pwm_sram_data_address(7 downto 0) >= "11111111") then
-							  pwm_sram_data_address <= (others  => '0');
-						else
-							  pwm_sram_data_address <= pwm_sram_data_address + 2;
-						end if;
-						sram_data_address <= pwm_sram_data_address;
+						sram_data_address(7 downto 0) <= pwm_counter(31 downto 24);
 					end if;
 			end case;
 		end if;	
@@ -405,11 +372,6 @@ architecture archTop  of  Top is
   i2c_user_logic_process : process(I_CLK_50MHZ, I_SYSTEM_RST)
 	begin
 		if(rising_edge(I_CLK_50MHZ))then
---			if (cont < "11111111111111111111111100000000") then
---				dataIn<="0000001101010101";
---			else 
---				dataIn<="0000000111110000";
---			end if;
 			if (cont = "11111111111111111111111111111111") then
 				cont <= "00000000000000000000000000000000";
 			end if;

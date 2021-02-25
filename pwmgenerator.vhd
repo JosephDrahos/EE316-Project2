@@ -18,7 +18,7 @@ entity pwmgenerator is
     clk : in std_logic;
     reset : in std_logic;
     en    : in std_logic;
-    data_in : in std_logic_vector(5 downto 0);
+    data_in : in std_logic_vector(15 downto 0);
     state : in std_logic_vector(2 downto 0);
 
     request_new_data : out std_logic;
@@ -32,7 +32,7 @@ architecture archpwmgenerator  of  pwmgenerator is
   signal onehundredtwentyhzcount : std_logic_vector(11 downto 0) := "011001011011";
   signal onethousandhzcount : std_logic_vector(11 downto 0) := "000011000011";
   signal counter : unsigned(11 downto 0) := (others => '0');
-  signal eightbitcounter: unsigned(7 downto 0) := (others => '0');
+  signal eightbitcounter: unsigned(15 downto 0) := (others => '0');
 begin
 
   pwm : process (clk, reset)
@@ -44,7 +44,7 @@ begin
          if(en = '1')then
            if(state = "100" or state = "101" or state = "110")then
              --8bit reset
-				 if(eightbitcounter >= "111111")then
+				 if(eightbitcounter >= "11111111111111")then
 				   eightbitcounter <= (others => '0');
 				 end if;
 				
